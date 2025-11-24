@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { applyMovementWithCollisions } from '../core/collision.js';
 import { logger } from '../core/logger.js';
 
+const PROJECTILE_OBSTACLE_PADDING = 0.25;
+
 export class Enemy {
   constructor(scene, position, config, type) {
     this.scene = scene;
@@ -23,6 +25,7 @@ export class Enemy {
     this.collisionRadius = this.stats.collisionRadius || 0.9;
     this.lastCollisionLog = 0;
     this.navigationLogger = logger.withContext({ module: 'enemy', feature: 'navigation', archetype: this.type });
+    this.projectileLogger = logger.withContext({ module: 'enemy', feature: 'projectiles', archetype: this.type });
 
     this.mesh = this.createMesh();
     this.mesh.position.copy(position);
@@ -89,7 +92,7 @@ export class Enemy {
       this.attack(player, playerPosition, delta, obstacles, distanceToPlayer);
     }
 
-    this.updateProjectiles(delta, player);
+    this.updateProjectiles(delta, player, obstacles);
   }
 
   patrol(delta, obstacles) {
@@ -196,6 +199,17 @@ export class Enemy {
     return avoidance;
   }
 
+  projectilePathBlocked(startPosition, nextPosition, obstacles) {
+    if (!obstacles || obstacles.length === 0) return false;
+
+    const path = new THREE.Line3(startPosition, nextPosition);
+
+    return obstacles.some(({ box }) => {
+      const paddedBox = box.clone().expandByScalar(PROJECTILE_OBSTACLE_PADDING);
+      return paddedBox.intersectsLine(path);
+    });
+  }
+
   logCollision(blockedAxes, position, obstacleCount) {
     if (!blockedAxes || blockedAxes.length === 0) return;
 
@@ -224,16 +238,30 @@ export class Enemy {
     );
   }
 
-  updateProjectiles(delta, player) {
+  updateProjectiles(delta, player, obstacles = []) {
     const now = performance.now() / 1000;
     this.projectiles = this.projectiles.filter((projectile) => {
-      projectile.position.addScaledVector(projectile.userData.velocity, delta);
+      const startPosition = projectile.position.clone();
+      const nextPosition = startPosition.clone().addScaledVector(projectile.userData.velocity, delta);
 
       const lifetime = now - projectile.userData.spawnedAt;
       if (lifetime > projectile.userData.lifetime) {
         this.scene.remove(projectile);
         return false;
       }
+
+      if (this.projectilePathBlocked(startPosition, nextPosition, obstacles)) {
+        this.scene.remove(projectile);
+        this.projectileLogger.debug('Enemy projectile intercepted by obstacle.', {
+          actorId: this.id || 'enemy',
+          obstacleCount: obstacles.length,
+          module: 'enemy',
+          feature: 'projectiles'
+        });
+        return false;
+      }
+
+      projectile.position.copy(nextPosition);
 
       const distanceToPlayer = projectile.position.distanceTo(player.controls.getObject().position);
       if (distanceToPlayer < 1) {

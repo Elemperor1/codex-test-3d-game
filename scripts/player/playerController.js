@@ -3,6 +3,8 @@ import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockCont
 import { applyMovementWithCollisions } from '../core/collision.js';
 import { logger } from '../core/logger.js';
 
+const PROJECTILE_OBSTACLE_PADDING = 0.25;
+
 export class PlayerController {
   constructor(camera, renderer, scene, hud, config) {
     this.camera = camera;
@@ -34,6 +36,7 @@ export class PlayerController {
     this.id = 'player';
     this.lastCollisionLog = 0;
     this.movementLogger = logger.withContext({ module: 'player', feature: 'navigation' });
+    this.projectileLogger = logger.withContext({ module: 'player', feature: 'projectiles' });
 
     this.controls = new PointerLockControls(camera, renderer.domElement);
     renderer.domElement.addEventListener('click', () => this.controls.lock());
@@ -157,6 +160,17 @@ export class PlayerController {
     });
   }
 
+  projectilePathBlocked(startPosition, nextPosition) {
+    if (!this.obstacles || this.obstacles.length === 0) return false;
+
+    const path = new THREE.Line3(startPosition, nextPosition);
+
+    return this.obstacles.some(({ box }) => {
+      const paddedBox = box.clone().expandByScalar(PROJECTILE_OBSTACLE_PADDING);
+      return paddedBox.intersectsLine(path);
+    });
+  }
+
   shoot() {
     const geometry = new THREE.SphereGeometry(0.15, 8, 8);
     const material = new THREE.MeshStandardMaterial({ color: '#ffbf47', emissive: '#ffa62b' });
@@ -251,13 +265,27 @@ export class PlayerController {
     const now = performance.now() / 1000;
 
     this.projectiles = this.projectiles.filter((projectile) => {
-      projectile.position.addScaledVector(projectile.userData.velocity, delta);
+      const startPosition = projectile.position.clone();
+      const nextPosition = startPosition.clone().addScaledVector(projectile.userData.velocity, delta);
 
       const lifetime = now - projectile.userData.spawnedAt;
       if (lifetime > this.config.combat.projectileLifetime) {
         this.scene.remove(projectile);
         return false;
       }
+
+      if (this.projectilePathBlocked(startPosition, nextPosition)) {
+        this.scene.remove(projectile);
+        this.projectileLogger.debug('Player projectile intercepted by obstacle.', {
+          actorId: this.id,
+          obstacleCount: this.obstacles.length,
+          module: 'player',
+          feature: 'projectiles'
+        });
+        return false;
+      }
+
+      projectile.position.copy(nextPosition);
 
       for (let i = 0; i < enemies.length; i += 1) {
         const enemy = enemies[i];
