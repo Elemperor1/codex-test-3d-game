@@ -101,6 +101,13 @@ const gameConfig = {
     fogNear: 20,
     fogFar: 140,
     floorSize: 120
+  },
+  logging: {
+    overlay: { maxEntries: 6 },
+    networkEndpoint: '',
+    networkFetchOptions: {
+      // Add headers like authentication tokens here if needed. Avoid PII/secrets.
+    }
   }
 };
 

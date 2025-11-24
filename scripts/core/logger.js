@@ -1,4 +1,5 @@
 const LEVELS = ['debug', 'info', 'warn', 'error'];
+const MAX_BREADCRUMBS = 12;
 
 class Logger {
   constructor() {
@@ -6,7 +7,19 @@ class Logger {
     this.handlersAttached = false;
     this.consoleSink = this.createConsoleSink();
     this.overlaySink = null;
+    this.sessionId = this.generateSessionId();
+    this.levelName = 'bootstrap';
+    this.breadcrumbs = [];
     this.registerSink(this.consoleSink);
+  }
+
+  generateSessionId() {
+    const globalCrypto = typeof crypto !== 'undefined' ? crypto : undefined;
+    if (globalCrypto?.randomUUID) {
+      return globalCrypto.randomUUID();
+    }
+
+    return `session-${Math.random().toString(36).slice(2)}-${Date.now()}`;
   }
 
   createConsoleSink() {
@@ -125,16 +138,76 @@ class Logger {
     return sink;
   }
 
+  startSession(levelName = 'unknown') {
+    this.sessionId = this.generateSessionId();
+    this.levelName = levelName;
+    this.breadcrumbs = [];
+    this.info('Session context initialized.', {
+      module: 'logger',
+      sessionId: this.sessionId,
+      levelName: this.levelName
+    });
+  }
+
+  setLevelName(levelName) {
+    this.levelName = levelName;
+  }
+
+  addBreadcrumb(event, metadata = {}) {
+    const breadcrumb = {
+      event,
+      timestamp: new Date().toISOString(),
+      ...metadata
+    };
+    this.breadcrumbs.push(breadcrumb);
+    if (this.breadcrumbs.length > MAX_BREADCRUMBS) {
+      this.breadcrumbs.shift();
+    }
+    return breadcrumb;
+  }
+
+  getBreadcrumbSummary() {
+    if (!this.breadcrumbs.length) return 'No breadcrumbs recorded.';
+
+    const latest = this.breadcrumbs.slice(-5).map((crumb) => {
+      const details = { ...crumb };
+      delete details.timestamp;
+      return `${crumb.event} (${Object.keys(details).length ? JSON.stringify(details) : 'no-details'})`;
+    });
+
+    return latest.join(' > ');
+  }
+
+  withContext(baseContext = {}) {
+    const bindContext = (fn) => (message, context = {}) => fn.call(this, message, { ...baseContext, ...context });
+    return {
+      debug: bindContext(this.debug),
+      info: bindContext(this.info),
+      warn: bindContext(this.warn),
+      error: bindContext(this.error),
+      breadcrumb: (event, metadata = {}) => this.addBreadcrumb(event, { ...baseContext, ...metadata })
+    };
+  }
+
   log(level, message, context) {
     if (!LEVELS.includes(level)) {
       throw new Error(`Unknown log level: ${level}`);
     }
 
+    const baseContext = {
+      sessionId: this.sessionId,
+      levelName: this.levelName,
+      breadcrumbs: this.breadcrumbs.slice(-5),
+      breadcrumbTrail: this.getBreadcrumbSummary()
+    };
+
+    const mergedContext = { ...baseContext, ...(context || {}) };
+
     const entry = {
       level,
       message,
       timestamp: new Date().toISOString(),
-      context: context && Object.keys(context).length > 0 ? context : undefined
+      context: Object.keys(mergedContext).length > 0 ? mergedContext : undefined
     };
 
     this.sinks.forEach((sink) => {
@@ -178,14 +251,18 @@ class Logger {
         line: event.lineno,
         column: event.colno,
         error: event.error,
-        nextSteps: 'Reload the page. If the issue persists, clear your cache or report the error.'
+        nextSteps: 'Reload the page. If the issue persists, clear your cache or report the error.',
+        breadcrumbTrail: this.getBreadcrumbSummary(),
+        sessionId: this.sessionId
       });
     });
 
     window.addEventListener('unhandledrejection', (event) => {
       this.error('An unhandled promise rejection occurred.', {
         reason: event.reason,
-        nextSteps: 'Retry the last action or reload the page to continue playing.'
+        nextSteps: 'Retry the last action or reload the page to continue playing.',
+        breadcrumbTrail: this.getBreadcrumbSummary(),
+        sessionId: this.sessionId
       });
     });
 
