@@ -25,6 +25,31 @@ const gameConfig = {
     maxSimultaneous: 10,
     defaultType: 'grunt',
     waveIntermission: 3,
+    difficulty: {
+      minModifier: 0.85,
+      maxModifier: 1.3,
+      smoothing: 0.12,
+      maxTtkSamples: 24,
+      targets: {
+        averageTimeToKill: 3.2,
+        healthRatio: 0.55,
+        ammoSpentRatio: 0.4
+      },
+      scaling: {
+        timeToKill: 0.6,
+        health: 0.25,
+        ammo: 0.2
+      },
+      bands: [
+        { name: 'recovery', maxScore: -0.2, allowedArchetypes: ['grunt', 'ranger'] },
+        { name: 'balanced', minScore: -0.2, maxScore: 0.35, allowedArchetypes: ['grunt', 'ranger', 'skirmisher'] },
+        {
+          name: 'pressure',
+          minScore: 0.35,
+          allowedArchetypes: ['grunt', 'ranger', 'skirmisher', 'brute', 'artillery']
+        }
+      ]
+    },
     waves: [
       { count: 6, spawnInterval: 3.5, types: ['grunt'] },
       { count: 8, spawnInterval: 3, types: ['grunt', 'ranger'] },

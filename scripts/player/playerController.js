@@ -213,12 +213,13 @@ export class PlayerController {
 
       for (let i = 0; i < enemies.length; i += 1) {
         const enemy = enemies[i];
+        if (enemy.isDead) continue;
         const distance = projectile.position.distanceTo(enemy.mesh.position);
         if (distance < 1) {
           this.scene.remove(projectile);
           enemy.hit(this.config.combat.damage);
           if (enemy.isDead) {
-            enemies.splice(i, 1);
+            enemy.markedForRemoval = true;
             this.score += 100;
           }
           return false;

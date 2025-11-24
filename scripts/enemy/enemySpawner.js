@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Enemy } from './enemy.js';
+import { DifficultyController } from './difficultyController.js';
 
 export class EnemySpawner {
   constructor(scene, config) {
@@ -15,6 +16,8 @@ export class EnemySpawner {
     this.spawnedThisWave = 0;
     this.intermissionTimer = 0;
     this.scheduleComplete = false;
+    this.difficulty = new DifficultyController(config.enemies.difficulty);
+    this.totalWaves = 0;
     this.callbacks = {
       onWaveStart: () => {},
       onWaveComplete: () => {},
@@ -52,6 +55,7 @@ export class EnemySpawner {
     this.spawnedThisWave = 0;
     this.scheduleComplete = false;
     this.intermissionTimer = 0;
+    this.totalWaves = this.waves.length;
   }
 
   update(delta, player) {
@@ -74,24 +78,43 @@ export class EnemySpawner {
     }
 
     const wave = this.waves[this.currentWaveIndex];
-    if (!this.scheduleComplete && wave) {
-      const spawnInterval = wave.spawnInterval || this.config.enemies.spawnInterval;
+    this.difficulty.update(player, {
+      waveIndex: this.currentWaveIndex,
+      enemiesAlive: this.enemies.length
+    });
+    const adjustedWave = wave
+      ? this.difficulty.applyToWave(
+          { ...wave, defaultSpawnInterval: this.config.enemies.spawnInterval },
+          this.allowedEnemyTypes
+        )
+      : null;
+
+    if (!this.scheduleComplete && adjustedWave) {
+      const spawnInterval = adjustedWave.spawnInterval || this.config.enemies.spawnInterval;
       if (
         this.spawnTimer <= 0 &&
-        this.spawnedThisWave < wave.count &&
+        this.spawnedThisWave < adjustedWave.count &&
         this.enemies.length < this.config.enemies.maxSimultaneous
       ) {
-        this.spawnEnemy(this.pickEnemyType(wave));
+        this.spawnEnemy(this.pickEnemyType(adjustedWave));
         this.spawnTimer = spawnInterval;
         this.spawnedThisWave += 1;
       }
 
-      if (this.spawnedThisWave >= wave.count && this.enemies.length === 0) {
+      if (this.spawnedThisWave >= adjustedWave.count && this.enemies.length === 0) {
         this.finishWave();
       }
     }
 
-    this.enemies.forEach((enemy) => enemy.update(player, delta, this.obstacles));
+    this.enemies.forEach((enemy) => {
+      enemy.update(player, delta, this.obstacles);
+      if (enemy.isDead && !enemy.killRecorded) {
+        this.difficulty.trackKill(enemy);
+        enemy.killRecorded = true;
+      }
+    });
+
+    this.cleanupEnemies();
   }
 
   spawnEnemy(type) {
@@ -100,6 +123,9 @@ export class EnemySpawner {
     const point = this.spawnPoints[index];
     const enemy = this.createEnemyInstance(type, point);
     if (!enemy) return;
+    enemy.id = `enemy-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    enemy.spawnedAt = performance.now() / 1000;
+    this.difficulty.trackSpawn(enemy);
     this.scene.add(enemy.mesh);
     this.enemies.push(enemy);
   }
@@ -150,5 +176,14 @@ export class EnemySpawner {
       const currentWave = this.waves[this.currentWaveIndex];
       this.intermissionTimer = currentWave.intermission || this.config.enemies.waveIntermission || 0;
     }
+  }
+
+  cleanupEnemies() {
+    this.enemies = this.enemies.filter((enemy) => {
+      if (enemy.isDead && enemy.deathTimer <= 0) {
+        return false;
+      }
+      return true;
+    });
   }
 }
