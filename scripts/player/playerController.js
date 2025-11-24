@@ -45,16 +45,16 @@ export class PlayerController {
     const controlsObject = this.controls.getObject();
 
     this.direction.set(0, 0, 0);
-    if (this.keys['KeyW']) this.direction.z -= 1;
-    if (this.keys['KeyS']) this.direction.z += 1;
+    if (this.keys['KeyW']) this.direction.z += 1;
+    if (this.keys['KeyS']) this.direction.z -= 1;
     if (this.keys['KeyA']) this.direction.x -= 1;
     if (this.keys['KeyD']) this.direction.x += 1;
 
     this.direction.normalize();
 
     if (this.direction.lengthSq() > 0) {
-      this.velocity.x -= this.direction.x * acceleration * delta;
-      this.velocity.z -= this.direction.z * acceleration * delta;
+      this.velocity.x += this.direction.x * acceleration * delta;
+      this.velocity.z += this.direction.z * acceleration * delta;
     } else {
       this.velocity.x -= this.velocity.x * deceleration * delta;
       this.velocity.z -= this.velocity.z * deceleration * delta;
@@ -64,7 +64,7 @@ export class PlayerController {
     this.velocity.z = THREE.MathUtils.clamp(this.velocity.z, -maxSpeed, maxSpeed);
 
     controlsObject.translateX(this.velocity.x * delta);
-    controlsObject.translateZ(this.velocity.z * delta);
+    controlsObject.translateZ(-this.velocity.z * delta);
 
     controlsObject.position.y = 2.4;
 
