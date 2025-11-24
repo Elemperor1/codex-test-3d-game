@@ -14,6 +14,7 @@ export class EnemySpawner {
     this.waves = [];
     this.currentWaveIndex = -1;
     this.spawnedThisWave = 0;
+    this.waveComplete = false;
     this.intermissionTimer = 0;
     this.scheduleComplete = false;
     this.difficulty = new DifficultyController(config.enemies.difficulty);
@@ -53,6 +54,7 @@ export class EnemySpawner {
     this.waves = waves.length > 0 ? waves : this.config.enemies.waves || [];
     this.currentWaveIndex = -1;
     this.spawnedThisWave = 0;
+    this.waveComplete = false;
     this.scheduleComplete = false;
     this.intermissionTimer = 0;
     this.totalWaves = this.waves.length;
@@ -101,7 +103,12 @@ export class EnemySpawner {
         this.spawnedThisWave += 1;
       }
 
-      if (this.spawnedThisWave >= adjustedWave.count && this.enemies.length === 0) {
+      if (
+        !this.waveComplete &&
+        this.intermissionTimer <= 0 &&
+        this.spawnedThisWave >= adjustedWave.count &&
+        this.enemies.length === 0
+      ) {
         this.finishWave();
       }
     }
@@ -153,6 +160,7 @@ export class EnemySpawner {
     this.currentWaveIndex += 1;
     this.spawnedThisWave = 0;
     this.spawnTimer = 0;
+    this.waveComplete = false;
     this.intermissionTimer = 0;
 
     if (this.currentWaveIndex >= this.waves.length) {
@@ -166,6 +174,8 @@ export class EnemySpawner {
   }
 
   finishWave() {
+    if (this.waveComplete) return;
+    this.waveComplete = true;
     const waveNumber = this.currentWaveIndex + 1;
     this.callbacks.onWaveComplete(waveNumber, this.waves.length);
 
